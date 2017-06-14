@@ -1,2 +1,2 @@
 # lodos
-golang server framework by dming
+just test by dming
