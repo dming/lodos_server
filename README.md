@@ -1,2 +1,2 @@
 # lodos
-golfing server framwork
+golang server framework by dming
