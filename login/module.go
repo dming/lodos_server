@@ -62,14 +62,16 @@ func (m *Login) login(session gate.Session, msg map[string]interface{}) (result 
 		return
 	}
 	userName := msg["userName"].(string)
-	return fmt.Sprintf("login success %s", userName), nil
 
 	err = session.Bind(userName)
 	if err != nil {
 		return
 	}
 	session.Set("login", "true")
-	session.Push() //推送到网关
+	err = session.Push() //推送到网关
+	if err != nil {
+		return
+	}
 	return fmt.Sprintf("login success %s", userName), nil
 }
 
