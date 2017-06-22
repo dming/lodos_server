@@ -9,7 +9,7 @@ import (
 	"github.com/dming/lodos/gate"
 	log "github.com/dming/lodos/mlog"
 	"github.com/dming/lodos/module"
-	"github.com/DeanThompson/syncmap"
+	"github.com/dming/lodos/utils/safemap"
 	"strconv"
 )
 
@@ -22,8 +22,7 @@ type Gate struct {
 	gate.Gate //继承
 
 	//storage map[string]map[string]string
-	storage *MutexMap
-	storage2 *syncmap.SyncMap
+	storage *safemap.BeeMap4MapStr
 }
 
 func (gate *Gate) GetType() string {
@@ -38,18 +37,30 @@ func (gate *Gate) OnInit(app module.AppInterface, settings conf.ModuleSettings) 
 	//注意这里一定要用 gate.Gate 而不是 module.BaseModule
 	gate.Gate.OnInit(app, settings)
 
-	gate.storage = NewMutexMap()
-	gate.storage2 = syncmap.New()
+	gate.storage = safemap.NewBeeMap4MapStr()
 	gate.Gate.SetStorageHandler(gate) //设置持久化处理器
 }
 
 /**
-存储用户的Session信息
+存储用户的Session信息.
 Session Bind Userid以后每次设置 settings都会调用一次Storage
 */
 func (gate *Gate) Storage(Userid string, settings map[string]string) (err error) {
-	log.Info("处理对Session的持久化, userid is %s, %v", Userid, settings)
-	gate.storage.Set(Userid, settings)
+	//增量更新settings
+	var result *safemap.BeeMap4String
+	if gate.storage.Check(Userid) {
+		result = gate.storage.Get(Userid)
+	} else {
+		result = safemap.NewBeeMap4String()
+	}
+	for k, v := range settings {
+		if !result.Check(k) {
+			result.Set(k, v)
+		}
+	}
+	gate.storage.Set(Userid, result)
+
+	log.Info("处理对Session的持久化完毕")
 	return nil
 }
 
@@ -57,7 +68,7 @@ func (gate *Gate) Storage(Userid string, settings map[string]string) (err error)
 强制删除Session信息
 */
 func (gate *Gate) Delete(Userid string) (err error) {
-	log.Info("删除Session持久化数据")
+	log.Debug("删除Session持久化数据")
 	gate.storage.Delete(Userid)
 	return nil
 }
@@ -67,12 +78,10 @@ func (gate *Gate) Delete(Userid string) (err error) {
 用户登录以后会调用Query获取最新信息
 */
 func (gate *Gate) Query(Userid string) (settings map[string]string, err error) {
-	log.Info("查询Session持久化数据")
+	log.Debug("查询Session持久化数据")
 
-
-	if result := gate.storage.Get(Userid); result != nil {
-		//settings = result
-		return result, nil
+	if gate.storage.Check(Userid){
+		return gate.storage.Get(Userid).Items(), nil
 	}
 	return nil, fmt.Errorf("can not find the storage [%s] settings ", Userid)
 }
@@ -83,22 +92,25 @@ func (gate *Gate) Query(Userid string) (settings map[string]string, err error) {
 */
 func (gate *Gate) Heartbeat(Userid string) {
 	defer func() {
-		log.Debug("更新心跳包， Userid is [%s]", Userid)
 		if r := recover(); r != nil {
 			log.Error("Gate Storage HeartBeat Error : %s", r)
 		}
 	}()
 
-	if result := gate.storage.Get(Userid); result != nil {
+	if gate.storage.Check(Userid) {
+		log.Debug("Heartbeat123")
+		var tempSettings *safemap.BeeMap4String
+		tempSettings = gate.storage.Get(Userid)
 
-		if timeout, ok := result["timeout"]; ok {
+		if timeout := tempSettings.Get("timeout"); timeout != "" {
 			if i, err := strconv.Atoi(timeout); err == nil && i < 120 {
 				log.Info("更新用户 %s 在线的心跳包, now is %d", Userid, i + 60)
-				result["timeout"] = string(i + 60)
+				tempSettings.Set("timeout", string(i + 60))
 			}
 		}
+		gate.storage.Set(Userid, tempSettings)
 	} else {
-		log.Error("can not find the storage user :  [%s] ", Userid)
+		log.Warning("can not find the storage user :  [%s] ", Userid)
 	}
 
 }
