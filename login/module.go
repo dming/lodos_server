@@ -10,6 +10,7 @@ import (
 	"github.com/dming/lodos/module"
 	"github.com/dming/lodos/module/base"
 	log "github.com/dming/lodos/mlog"
+	"time"
 )
 
 var Module = func() module.Module {
@@ -56,6 +57,7 @@ func (m *Login) robot(session gate.Session, msg map[string]interface{}) (result 
 }
 
 func (m *Login) login(session gate.Session, msg map[string]interface{}) (result string, err error) {
+	time.Sleep(time.Millisecond * 200)
 	log.Info("call login")
 	if msg["userName"] == nil || msg["passWord"] == nil {
 		err = fmt.Errorf("userName or passWord cannot be nil")
@@ -68,7 +70,7 @@ func (m *Login) login(session gate.Session, msg map[string]interface{}) (result 
 		return
 	}
 	session.Set("login", "true")
-	err = session.Push() //推送到网关
+	err = session.PushSettings() //推送到网关
 	if err != nil {
 		return
 	}
