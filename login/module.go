@@ -9,17 +9,19 @@ import (
 	"github.com/dming/lodos/gate"
 	"github.com/dming/lodos/module"
 	"github.com/dming/lodos/module/base"
-	log "github.com/dming/lodos/mlog"
+	log "github.com/dming/lodos/log"
 	"time"
+	"github.com/go-redis/redis"
 )
 
 var Module = func() module.Module {
-	gate := new(Login)
-	return gate
+	m := new(Login)
+	return m
 }
 
 type Login struct {
-	basemodule.Skeleton
+	basemodule.BaseModule
+	db *redis.Client
 }
 
 func (m *Login) GetType() string {
@@ -30,13 +32,31 @@ func (m *Login) Version() string {
 	//可以在监控时了解代码版本
 	return "1.0.0"
 }
-func (m *Login) OnInit(app module.AppInterface, settings conf.ModuleSettings) {
-	m.Skeleton.Init(app, settings)
-
+func (m *Login) OnInit(app module.AppInterface, settings *conf.ModuleSettings) {
+	m.BaseModule.OnInit(app, m, settings)
+	m.SetDBClient("127.0.0.1:6379", "")
 	m.GetServer().RegisterGo("HD_Login", m.login)  //我们约定所有对客户端的请求都以Handler_开头
 	m.GetServer().RegisterGo("getRand", m.getRand) //演示后台模块间的rpc调用
 	m.GetServer().Register("HD_Robot", m.robot)
 	m.GetServer().RegisterGo("HD_Robot_GO", m.robot)  //我们约定所有对客户端的请求都以Handler_开头
+}
+
+func (m *Login) SetDBClient(addr string, password string, args ...interface{}) (error) {
+	client := redis.NewClient(&redis.Options{
+		Addr: addr, //"127.0.0.1:6379",
+		Password: password, // "guest",
+		DB : 0,
+	})
+	pong, err := client.Ping().Result()
+	if err != nil {
+		log.Error("connect to redis %s fail, err is  [%s]", addr, err)
+		return err
+	}
+	m.db = client
+	log.Info("connect to redis %s success, ping result [%s]", addr, pong)
+
+	//
+	return nil
 }
 
 func (m *Login) Run(closeSig chan bool) {
@@ -56,6 +76,7 @@ func (m *Login) robot(session gate.Session, msg map[string]interface{}) (result 
 	return fmt.Sprintf("%s, %s", msg["userName"], msg["passWord"]), nil
 }
 
+// return token ?
 func (m *Login) login(session gate.Session, msg map[string]interface{}) (result string, err error) {
 	time.Sleep(time.Millisecond * 200)
 	log.Info("call login")
@@ -70,7 +91,7 @@ func (m *Login) login(session gate.Session, msg map[string]interface{}) (result 
 		return
 	}
 	session.Set("login", "true")
-	err = session.PushSettings() //推送到网关
+	err = session.Push() //推送到网关
 	if err != nil {
 		return
 	}

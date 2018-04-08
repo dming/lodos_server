@@ -4,13 +4,9 @@
 package gate
 
 import (
-	"fmt"
 	"github.com/dming/lodos/conf"
-	"github.com/dming/lodos/gate"
-	log "github.com/dming/lodos/mlog"
 	"github.com/dming/lodos/module"
-	"github.com/dming/lodos/utils/safemap"
-	"strconv"
+	"github.com/dming/lodos/gate/base"
 )
 
 var Module = func() module.Module {
@@ -19,10 +15,10 @@ var Module = func() module.Module {
 }
 
 type Gate struct {
-	gate.Gate //继承
+	basegate.Gate //继承
 
 	//storage map[string]map[string]string
-	storage *safemap.BeeMap4MapStr
+	//storage *safemap.BeeMap4MapStr
 }
 
 func (gate *Gate) GetType() string {
@@ -33,84 +29,16 @@ func (gate *Gate) Version() string {
 	//可以在监控时了解代码版本
 	return "1.0.0"
 }
-func (gate *Gate) OnInit(app module.AppInterface, settings conf.ModuleSettings) {
+func (gate *Gate) OnInit(app module.AppInterface, settings *conf.ModuleSettings) {
 	//注意这里一定要用 gate.Gate 而不是 module.BaseModule
-	gate.Gate.OnInit(app, settings)
+	gate.Gate.OnInit(app, gate, settings)
 
-	gate.storage = safemap.NewBeeMap4MapStr()
+	//gate.storage = safemap.NewBeeMap4MapStr()
 	gate.Gate.SetStorageHandler(gate) //设置持久化处理器
 }
-
-/**
-存储用户的Session信息.
-Session Bind Userid以后每次设置 settings都会调用一次Storage
-*/
-func (gate *Gate) Storage(Userid string, settings map[string]string) (err error) {
-	//增量更新settings
-	var result *safemap.BeeMap4String
-	if gate.storage.Check(Userid) {
-		result = gate.storage.Get(Userid)
-	} else {
-		result = safemap.NewBeeMap4String()
-	}
-	for k, v := range settings {
-		if !result.Check(k) {
-			result.Set(k, v)
-		}
-	}
-	gate.storage.Set(Userid, result)
-
-	log.Info("处理对Session的持久化完毕")
-	return nil
+func (gate *Gate) Run(closeSig chan bool) {
+	gate.Gate.Run(closeSig)
 }
-
-/**
-强制删除Session信息
-*/
-func (gate *Gate) Delete(Userid string) (err error) {
-	log.Debug("删除Session持久化数据")
-	gate.storage.Delete(Userid)
-	return nil
-}
-
-/**
-获取用户Session信息
-用户登录以后会调用Query获取最新信息
-*/
-func (gate *Gate) Query(Userid string) (settings map[string]string, err error) {
-	log.Debug("查询Session持久化数据")
-
-	if gate.storage.Check(Userid){
-		return gate.storage.Get(Userid).Items(), nil
-	}
-	return nil, fmt.Errorf("can not find the storage [%s] settings ", Userid)
-}
-
-/**
-用户心跳,一般用户在线时60s发送一次
-可以用来延长Session信息过期时间
-*/
-func (gate *Gate) Heartbeat(Userid string) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error("Gate Storage HeartBeat Error : %s", r)
-		}
-	}()
-
-	if gate.storage.Check(Userid) {
-		log.Debug("Heartbeat123")
-		var tempSettings *safemap.BeeMap4String
-		tempSettings = gate.storage.Get(Userid)
-
-		if timeout := tempSettings.Get("timeout"); timeout != "" {
-			if i, err := strconv.Atoi(timeout); err == nil && i < 120 {
-				log.Info("更新用户 %s 在线的心跳包, now is %d", Userid, i + 60)
-				tempSettings.Set("timeout", string(i + 60))
-			}
-		}
-		gate.storage.Set(Userid, tempSettings)
-	} else {
-		log.Warning("can not find the storage user :  [%s] ", Userid)
-	}
-
+func (gate *Gate) OnDestroy() {
+	gate.Gate.OnDestroy()
 }

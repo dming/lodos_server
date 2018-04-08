@@ -6,9 +6,8 @@ import (
 	"github.com/dming/lodos/module"
 	"github.com/dming/lodos/conf"
 	"encoding/json"
-	log "github.com/dming/lodos/mlog"
+	"github.com/dming/lodos/log"
 	"fmt"
-	"reflect"
 )
 
 var Module = func() module.Module {
@@ -18,7 +17,7 @@ var Module = func() module.Module {
 
 type chat struct {
 	//module.Module
-	basemodule.Skeleton
+	basemodule.BaseModule
 	chats map[string]map[string]gate.Session //first string is room name, second string is user id
 }
 
@@ -32,8 +31,8 @@ func (c *chat) Version() string {
 }
 
 
-func (c *chat) OnInit(app module.AppInterface, settings conf.ModuleSettings)  {
-	c.Skeleton.Init(app, settings)
+func (c *chat) OnInit(app module.AppInterface, settings *conf.ModuleSettings)  {
+	c.BaseModule.OnInit(app, c, settings)
 	c.chats = map[string]map[string]gate.Session{}
 
 	c.GetServer().RegisterGo("HD_JoinChat", c.joinChat) //约定所有对客户端的请求都以handler_开头
@@ -45,14 +44,16 @@ func (c *chat) Run(closeSig chan bool)  {
 }
 
 func (c *chat) OnDestroy() {
-	c.Skeleton.Destroy()
+	c.BaseModule.OnDestroy()
 }
 
 func (c *chat) joinChat(session gate.Session, msg map[string]interface{}) (result map[string]interface{}, err error) {
-	if reflect.TypeOf(msg["roomName"]) != reflect.TypeOf(new(string)) {
-		err = fmt.Errorf("roomName should be string")
-		return
-	} else if msg["roomName"] == "" {
+	if temp := msg["roomName"]; temp != nil {
+		if _, ok := msg["roomName"].(string); !ok {
+			err = fmt.Errorf("roomName should be string")
+			return
+		}
+	} else {
 		err = fmt.Errorf("roomName cannot be nil")
 		return
 	}
@@ -62,7 +63,7 @@ func (c *chat) joinChat(session gate.Session, msg map[string]interface{}) (resul
 		return
 	}
 	roomName := msg["roomName"].(string)
-	r, e := c.Call("Login", "getRand", 1, []byte("hello"), msg, 10.01, int32(1), true)
+	r, e := c.RpcCall("Login", "getRand", 1, []byte("hello"), msg, 10.01, int32(1), true)
 
 	log.Info("演示模块间RPC调用 :", r,e)
 
