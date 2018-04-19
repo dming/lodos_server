@@ -10,7 +10,7 @@ import (
 
 func (m *user) Register(session gate.Session, args map[string]interface{}) error {
 	mongoInfo := m.GetModuleSetting().Mongo
-	coll, err := basedb.GetMongoFactories().GetCOLL(mongoInfo.Uri, mongoInfo.DB, COLL)
+	coll, err := basedb.GetMongoFactories().GetCOLL(mongoInfo.Uri, mongoInfo.DB, USERCOLL)
 	if err != nil {
 		log.Error(err.Error())
 		return err
